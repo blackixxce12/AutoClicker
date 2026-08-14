@@ -11,7 +11,7 @@
 [![Windows](https://img.shields.io/badge/Windows-10%20%2F%2011-0078D6?logo=windows&logoColor=white)]()
 [![Rust](https://img.shields.io/badge/Made%20with-Rust%201.97-orange?logo=rust&logoColor=white)]()
 [![egui](https://img.shields.io/badge/UI-egui%20%2F%20eframe%200.36-blue)]()
-[![No hooks](https://img.shields.io/badge/global%20hooks-none-brightgreen)](https://github.com/blackixxce12/AutoClicker/releases/tag/clicker)
+[![Latest Release](https://img.shields.io/badge/global%20hooks-none-brightgreen)](https://github.com/blackixxce12/AutoClicker/releases/tag/clicker)
 
 *Set an interval → pick a button → press `F6` → go do something else.*
 
