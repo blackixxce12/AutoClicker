@@ -17,6 +17,7 @@
 
 [📥 Download](../../releases) • [✨ Features](#-features) • [🆚 vs OP Auto Clicker](#-auto-clicker-vs-op-auto-clicker) • [🧠 How it works](#-how-it-works) • [🇷🇺 Русская версия](README_RU.md)
 
+<img src="screenshot.png" width="330" alt="Window Auto Clicker">
 
 </div>
 
