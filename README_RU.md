@@ -11,13 +11,13 @@
 [![Windows](https://img.shields.io/badge/Windows-10%20%2F%2011-0078D6?logo=windows&logoColor=white)]()
 [![Rust](https://img.shields.io/badge/Made%20with-Rust%201.97-orange?logo=rust&logoColor=white)]()
 [![egui](https://img.shields.io/badge/UI-egui%20%2F%20eframe%200.36-blue)]()
-[![No hooks](https://img.shields.io/badge/глобальных%20хуков-нет-brightgreen)]()
+[![Latest Release](https://img.shields.io/github/v/release/blackixxce12/AutoClicker?label=release&color=green)](https://github.com/blackixxce12/AutoClicker/releases/tag/clicker)
 
 *Задал интервал → выбрал кнопку → нажал `F6` → пошёл заниматься своими делами.*
 
 [📥 Скачать](../../releases) • [✨ Возможности](#-возможности) • [🆚 vs OP Auto Clicker](#-auto-clicker-vs-op-auto-clicker) • [🧠 Как это работает](#-как-это-работает) • [🇬🇧 English version](README.md)
 
-img src="screenshot1.png" width="330" alt="Окно Auto Clicker">
+<img src="screenshot1.png" width="330" alt="Окно Auto Clicker">
 
 </div>
 
