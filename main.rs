@@ -1656,9 +1656,9 @@ define_strings!(
 );
 
 const EN: Strings = Strings {
-    sec_interval: "⏱ Click interval", sec_options: "🖱 Click options",
+    sec_interval: "⏱ Click interval", sec_options: "👆 Click options",
     sec_repeat: "🔁 Click repeat", sec_position: "🎯 Cursor position",
-    sec_limits: "⌛ Time limit", sec_pixel: "🌡 Pixel condition",
+    sec_limits: "⌛ Time limit", sec_pixel: "🔎 Pixel condition",
     sec_hotkeys: "⌨ Hotkeys", sec_appearance: "🎨 Appearance", sec_profiles: "📋 Profiles",
     lbl_hours: "hours", lbl_mins: "mins", lbl_secs: "secs", lbl_ms: "milliseconds",
     random_offset: "Random offset ±", tip_random: "Varies each interval by up to this much, in both directions.",
@@ -1678,7 +1678,7 @@ const EN: Strings = Strings {
     limit_cb: "Stop after", limit_h: "H", limit_m: "M", limit_s: "S",
     pixel_cb: "Stop on a screen pixel", pixel_pick: "🎯 Pick in 3 s", pixel_tol: "Tolerance",
     pixel_match: "when it matches", pixel_differ: "when it differs",
-    hk_toggle: "Start / stop:", hk_stop: "Emergency stop:", hk_bind: "Click, then press a key",
+    hk_toggle: "Start / stop:", hk_stop: "Emergency stop:", hk_bind: "Bind",
     hk_press: "press a key… (Esc cancels)", hk_clear: "Clear",
     hk_failed: "⚠ Some hotkeys are taken by another app",
     hold_mode: "Click only while the key is held",
@@ -1689,7 +1689,7 @@ const EN: Strings = Strings {
     lang_template: "🌍 Export language template",
     prof_name: "Name:", prof_save: "Save", prof_delete: "Delete",
     btn_start: "▶ Start", btn_stop: "⏹ Stop", save_settings: "💾 Save settings",
-    reset_all: "↺ Defaults",
+    reset_all: "Defaults",
     status_ready: "Ready", status_running: "Clicking…", status_hold: "Hold the key to click",
     status_pixel: "Stopped by the pixel condition",
     stat_clicks: "Clicks: {}", stat_cps: "{} / sec", stat_elapsed: "Elapsed: {}",
@@ -1699,9 +1699,9 @@ const EN: Strings = Strings {
 };
 
 const RU: Strings = Strings {
-    sec_interval: "⏱ Интервал кликов", sec_options: "🖱 Параметры клика",
+    sec_interval: "⏱ Интервал кликов", sec_options: "👆 Параметры клика",
     sec_repeat: "🔁 Повторы", sec_position: "🎯 Позиция курсора",
-    sec_limits: "⌛ Лимит времени", sec_pixel: "🌡 Условие по пикселю",
+    sec_limits: "⌛ Лимит времени", sec_pixel: "🔎 Условие по пикселю",
     sec_hotkeys: "⌨ Горячие клавиши", sec_appearance: "🎨 Оформление", sec_profiles: "📋 Профили",
     lbl_hours: "часов", lbl_mins: "минут", lbl_secs: "секунд", lbl_ms: "миллисекунд",
     random_offset: "Случайный разброс ±",
@@ -1724,7 +1724,7 @@ const RU: Strings = Strings {
     pixel_cb: "Останавливаться по пикселю экрана", pixel_pick: "🎯 Взять через 3 с",
     pixel_tol: "Допуск", pixel_match: "когда совпадает", pixel_differ: "когда отличается",
     hk_toggle: "Старт / стоп:", hk_stop: "Аварийный стоп:",
-    hk_bind: "Нажмите, затем клавишу", hk_press: "нажмите клавишу… (Esc — отмена)",
+    hk_bind: "Задать", hk_press: "нажмите клавишу… (Esc — отмена)",
     hk_clear: "Сбросить", hk_failed: "⚠ Часть клавиш занята другой программой",
     hold_mode: "Кликать только пока клавиша зажата",
     tip_hold_mode: "Клавиша старта становится триггером: клики идут, пока вы её держите.",
@@ -1734,7 +1734,7 @@ const RU: Strings = Strings {
     lang_template: "🌍 Выгрузить шаблон перевода",
     prof_name: "Имя:", prof_save: "Сохранить", prof_delete: "Удалить",
     btn_start: "▶ Старт", btn_stop: "⏹ Стоп", save_settings: "💾 Сохранить настройки",
-    reset_all: "↺ По умолчанию",
+    reset_all: "По умолчанию",
     status_ready: "Готов", status_running: "Кликаю…",
     status_hold: "Держите клавишу для кликов", status_pixel: "Остановлено по условию пикселя",
     stat_clicks: "Кликов: {}", stat_cps: "{} / сек", stat_elapsed: "Прошло: {}",
@@ -1744,9 +1744,9 @@ const RU: Strings = Strings {
 };
 
 const UK: Strings = Strings {
-    sec_interval: "⏱ Інтервал кліків", sec_options: "🖱 Параметри кліку",
+    sec_interval: "⏱ Інтервал кліків", sec_options: "👆 Параметри кліку",
     sec_repeat: "🔁 Повтори", sec_position: "🎯 Позиція курсора",
-    sec_limits: "⌛ Ліміт часу", sec_pixel: "🌡 Умова за пікселем",
+    sec_limits: "⌛ Ліміт часу", sec_pixel: "🔎 Умова за пікселем",
     sec_hotkeys: "⌨ Гарячі клавіші", sec_appearance: "🎨 Оформлення", sec_profiles: "📋 Профілі",
     lbl_hours: "годин", lbl_mins: "хвилин", lbl_secs: "секунд", lbl_ms: "мілісекунд",
     random_offset: "Випадковий розкид ±",
@@ -1769,7 +1769,7 @@ const UK: Strings = Strings {
     pixel_cb: "Зупинятися за пікселем екрана", pixel_pick: "🎯 Взяти через 3 с",
     pixel_tol: "Допуск", pixel_match: "коли збігається", pixel_differ: "коли відрізняється",
     hk_toggle: "Старт / стоп:", hk_stop: "Аварійний стоп:",
-    hk_bind: "Натисніть, потім клавішу", hk_press: "натисніть клавішу… (Esc — скасувати)",
+    hk_bind: "Задати", hk_press: "натисніть клавішу… (Esc — скасувати)",
     hk_clear: "Скинути", hk_failed: "⚠ Частину клавіш зайнято іншою програмою",
     hold_mode: "Клікати лише поки клавішу затиснуто",
     tip_hold_mode: "Клавіша старту стає тригером: кліки йдуть, поки ви її тримаєте.",
@@ -1779,7 +1779,7 @@ const UK: Strings = Strings {
     lang_template: "🌍 Вивантажити шаблон перекладу",
     prof_name: "Ім'я:", prof_save: "Зберегти", prof_delete: "Видалити",
     btn_start: "▶ Старт", btn_stop: "⏹ Стоп", save_settings: "💾 Зберегти налаштування",
-    reset_all: "↺ За замовчуванням",
+    reset_all: "За замовчуванням",
     status_ready: "Готово", status_running: "Клікаю…",
     status_hold: "Тримайте клавішу для кліків", status_pixel: "Зупинено за умовою пікселя",
     stat_clicks: "Кліків: {}", stat_cps: "{} / сек", stat_elapsed: "Минуло: {}",
@@ -1789,9 +1789,9 @@ const UK: Strings = Strings {
 };
 
 const PT: Strings = Strings {
-    sec_interval: "⏱ Intervalo de clique", sec_options: "🖱 Opções de clique",
+    sec_interval: "⏱ Intervalo de clique", sec_options: "👆 Opções de clique",
     sec_repeat: "🔁 Repetição", sec_position: "🎯 Posição do cursor",
-    sec_limits: "⌛ Limite de tempo", sec_pixel: "🌡 Condição de pixel",
+    sec_limits: "⌛ Limite de tempo", sec_pixel: "🔎 Condição de pixel",
     sec_hotkeys: "⌨ Atalhos", sec_appearance: "🎨 Aparência", sec_profiles: "📋 Perfis",
     lbl_hours: "horas", lbl_mins: "min", lbl_secs: "seg", lbl_ms: "milissegundos",
     random_offset: "Variação aleatória ±",
@@ -1814,7 +1814,7 @@ const PT: Strings = Strings {
     pixel_cb: "Parar por um pixel da tela", pixel_pick: "🎯 Capturar em 3 s",
     pixel_tol: "Tolerância", pixel_match: "quando coincidir", pixel_differ: "quando diferir",
     hk_toggle: "Iniciar / parar:", hk_stop: "Parada de emergência:",
-    hk_bind: "Clique e pressione uma tecla", hk_press: "pressione uma tecla… (Esc cancela)",
+    hk_bind: "Definir", hk_press: "pressione uma tecla… (Esc cancela)",
     hk_clear: "Limpar", hk_failed: "⚠ Alguns atalhos estão ocupados",
     hold_mode: "Clicar só enquanto a tecla estiver pressionada",
     tip_hold_mode: "A tecla de início vira gatilho: clica enquanto você a segura.",
@@ -1824,7 +1824,7 @@ const PT: Strings = Strings {
     lang_template: "🌍 Exportar modelo de idioma",
     prof_name: "Nome:", prof_save: "Salvar", prof_delete: "Excluir",
     btn_start: "▶ Iniciar", btn_stop: "⏹ Parar", save_settings: "💾 Salvar configurações",
-    reset_all: "↺ Padrões",
+    reset_all: "Padrões",
     status_ready: "Pronto", status_running: "Clicando…",
     status_hold: "Segure a tecla para clicar", status_pixel: "Parado pela condição de pixel",
     stat_clicks: "Cliques: {}", stat_cps: "{} / seg", stat_elapsed: "Decorrido: {}",
@@ -1834,9 +1834,9 @@ const PT: Strings = Strings {
 };
 
 const ES: Strings = Strings {
-    sec_interval: "⏱ Intervalo de clic", sec_options: "🖱 Opciones de clic",
+    sec_interval: "⏱ Intervalo de clic", sec_options: "👆 Opciones de clic",
     sec_repeat: "🔁 Repetición", sec_position: "🎯 Posición del cursor",
-    sec_limits: "⌛ Límite de tiempo", sec_pixel: "🌡 Condición de píxel",
+    sec_limits: "⌛ Límite de tiempo", sec_pixel: "🔎 Condición de píxel",
     sec_hotkeys: "⌨ Atajos", sec_appearance: "🎨 Apariencia", sec_profiles: "📋 Perfiles",
     lbl_hours: "horas", lbl_mins: "min", lbl_secs: "seg", lbl_ms: "milisegundos",
     random_offset: "Variación aleatoria ±",
@@ -1859,7 +1859,7 @@ const ES: Strings = Strings {
     pixel_cb: "Detener por un píxel de pantalla", pixel_pick: "🎯 Capturar en 3 s",
     pixel_tol: "Tolerancia", pixel_match: "cuando coincida", pixel_differ: "cuando difiera",
     hk_toggle: "Iniciar / detener:", hk_stop: "Parada de emergencia:",
-    hk_bind: "Pulsa y luego una tecla", hk_press: "pulsa una tecla… (Esc cancela)",
+    hk_bind: "Asignar", hk_press: "pulsa una tecla… (Esc cancela)",
     hk_clear: "Borrar", hk_failed: "⚠ Algunos atajos están ocupados",
     hold_mode: "Clicar sólo mientras la tecla esté pulsada",
     tip_hold_mode: "La tecla de inicio actúa como gatillo: clica mientras la mantienes.",
@@ -1869,7 +1869,7 @@ const ES: Strings = Strings {
     lang_template: "🌍 Exportar plantilla de idioma",
     prof_name: "Nombre:", prof_save: "Guardar", prof_delete: "Eliminar",
     btn_start: "▶ Iniciar", btn_stop: "⏹ Detener", save_settings: "💾 Guardar ajustes",
-    reset_all: "↺ Por defecto",
+    reset_all: "Por defecto",
     status_ready: "Listo", status_running: "Clicando…",
     status_hold: "Mantén la tecla para clicar", status_pixel: "Detenido por la condición de píxel",
     stat_clicks: "Clics: {}", stat_cps: "{} / seg", stat_elapsed: "Transcurrido: {}",
@@ -1879,9 +1879,9 @@ const ES: Strings = Strings {
 };
 
 const ZH: Strings = Strings {
-    sec_interval: "⏱ 点击间隔", sec_options: "🖱 点击选项",
+    sec_interval: "⏱ 点击间隔", sec_options: "👆 点击选项",
     sec_repeat: "🔁 重复次数", sec_position: "🎯 光标位置",
-    sec_limits: "⌛ 时间限制", sec_pixel: "🌡 像素条件",
+    sec_limits: "⌛ 时间限制", sec_pixel: "🔎 像素条件",
     sec_hotkeys: "⌨ 快捷键", sec_appearance: "🎨 外观", sec_profiles: "📋 配置",
     lbl_hours: "小时", lbl_mins: "分", lbl_secs: "秒", lbl_ms: "毫秒",
     random_offset: "随机浮动 ±", tip_random: "每次间隔在两个方向上最多浮动这么多。",
@@ -1902,7 +1902,7 @@ const ZH: Strings = Strings {
     pixel_cb: "按屏幕像素停止", pixel_pick: "🎯 3 秒后取色", pixel_tol: "容差",
     pixel_match: "当匹配时", pixel_differ: "当不匹配时",
     hk_toggle: "开始 / 停止:", hk_stop: "紧急停止:",
-    hk_bind: "点击后按一个键", hk_press: "请按一个键…（Esc 取消）",
+    hk_bind: "设置", hk_press: "请按一个键…（Esc 取消）",
     hk_clear: "清除", hk_failed: "⚠ 部分快捷键被其他程序占用",
     hold_mode: "仅在按住按键时点击",
     tip_hold_mode: "开始键变成扳机：按住时才会点击。",
@@ -1912,7 +1912,7 @@ const ZH: Strings = Strings {
     lang_template: "🌍 导出语言模板",
     prof_name: "名称:", prof_save: "保存", prof_delete: "删除",
     btn_start: "▶ 开始", btn_stop: "⏹ 停止", save_settings: "💾 保存设置",
-    reset_all: "↺ 默认值",
+    reset_all: "默认值",
     status_ready: "就绪", status_running: "点击中…",
     status_hold: "按住按键即可点击", status_pixel: "已按像素条件停止",
     stat_clicks: "点击: {}", stat_cps: "{} / 秒", stat_elapsed: "已用: {}",
@@ -2373,10 +2373,12 @@ fn hotkey_row(
     let mut changed = false;
     ui.horizontal_wrapped(|ui| {
         ui.label(label);
+        // Left cell is the action, right cell is the current value: neither can end
+        // up blank, and the two no longer say the same thing twice.
         let capturing = CAPTURE_SLOT.load(Ordering::Relaxed) == slot;
-        let text = if capturing { s.hk_press.to_string() } else { hk.label() };
-        let button = egui::Button::new(text).min_size(egui::vec2(140.0, 0.0));
-        if ui.add(button).on_hover_text(s.hk_bind).clicked() {
+        let text = if capturing { s.hk_press } else { s.hk_bind };
+        let button = egui::Button::new(text).min_size(egui::vec2(110.0, 0.0));
+        if ui.add(button).clicked() {
             if capturing {
                 end_capture();
             } else {
@@ -2384,8 +2386,8 @@ fn hotkey_row(
             }
         }
         egui::ComboBox::from_id_salt(salt)
-            .selected_text("▾")
-            .width(46.0)
+            .selected_text(vk_name(hk.vk))
+            .width(112.0)
             .show_ui(ui, |ui| {
                 for (name, vk) in HOTKEY_CHOICES {
                     if ui.selectable_label(hk.vk == vk, name).clicked() && hk.vk != vk {
@@ -2577,12 +2579,9 @@ impl eframe::App for ClickerApp {
                     } else {
                         ui.horizontal_wrapped(|ui| {
                             ui.label(s.key_to_press);
-                            ui.label(
-                                egui::RichText::new(vk_name(self.config.key_vk)).strong(),
-                            );
                             egui::ComboBox::from_id_salt("keypick")
-                                .selected_text("▾")
-                                .width(46.0)
+                                .selected_text(vk_name(self.config.key_vk))
+                                .width(112.0)
                                 .show_ui(ui, |ui| {
                                     // Letters, digits and the usual game keys.
                                     let mut list: Vec<u32> = (0x41..=0x5Au32).collect();
@@ -3281,3 +3280,4 @@ mod tests {
         assert!(p.file_name().unwrap().to_string_lossy().starts_with("farm_"));
     }
 }
+
