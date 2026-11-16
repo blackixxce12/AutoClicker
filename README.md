@@ -9,13 +9,13 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Windows](https://img.shields.io/badge/Windows-10%20%2F%2011-0078D6?logo=windows&logoColor=white)]()
-[![Rust](https://img.shields.io/badge/Made%20with-Rust%201.97-orange?logo=rust&logoColor=white)]()
-[![egui](https://img.shields.io/badge/UI-egui%20%2F%20eframe%200.36-blue)]()
-[![Latest Release](https://img.shields.io/github/v/release/blackixxce12/AutoClicker?label=release&color=green)](https://github.com/blackixxce12/AutoClicker/releases/tag/clicker)
+[![Rust](https://img.shields.io/badge/Made%20with-Rust%201.100-orange?logo=rust&logoColor=white)]()
+[![egui](https://img.shields.io/badge/UI-egui%20%2F%20eframe%200.37-blue)]()
+[![Latest Release](https://img.shields.io/github/v/release/blackixxce12/AutoClicker?label=release&color=green)](https://github.com/blackixxce12/AutoClicker/releases/latest)
 
 *Set an interval → pick a button → press `F6` → go do something else.*
 
-[📥 Download](../../releases) • [✨ Features](#-features) • [🆚 vs OP Auto Clicker](#-auto-clicker-vs-op-auto-clicker) • [🧠 How it works](#-how-it-works) • [🇷🇺 Русская версия](README_RU.md)
+[📥 Download](../../releases) • [✨ Features](#-features) • [🆚 vs OP Auto Clicker](#-auto-clicker-vs-op-auto-clicker) • [🧠 How it works](#-how-it-works) • [📝 Changelog](CHANGELOG.md) • [🇷🇺 Русская версия](README_RU.md)
 
 <img src="screenshot.png" width="330" alt="Window Auto Clicker">
 
@@ -209,7 +209,7 @@ flowchart LR
     ST <--> FS
 ```
 
-No `WH_KEYBOARD_LL`, no `WH_MOUSE_LL`, nothing injected anywhere: the hotkeys come from `RegisterHotKey`, hold-to-click polls `GetAsyncKeyState`, and that is the entire input surface.
+No `WH_KEYBOARD_LL`, no `WH_MOUSE_LL`, nothing injected anywhere: the hotkeys come from `RegisterHotKey` with a 10 ms `GetAsyncKeyState` fallback poll, hold-to-click polls `GetAsyncKeyState`, and that is the entire input surface.
 
 ### The timing loop
 
@@ -255,11 +255,13 @@ stateDiagram-v2
 
 Both are registered globally, so they work while any application has focus.
 
+**Since v1.1 the hotkeys have a safety net.** `RegisterHotKey` fails when another program already owns the combination — on some machines that left `F6`/`F9` dead in v1.0. Now a 10 ms `GetAsyncKeyState` poll watches the bindings as a fallback, the two delivery paths are deduplicated (one physical press = exactly one action), and a failed registration is retried every 5 seconds. The keys keep working either way.
+
 To rebind, click the key button and press anything — while binding, the current hotkeys are released so you can even swap `F6` and `F9` around. Esc or 15 seconds of silence cancels. The ▾ list next to it covers keys a focused window never receives, such as `Pause`, `ScrollLock` and the NumPad.
 
 With **hold-to-click** enabled, the start key stops toggling and becomes a trigger: clicks happen only while it is physically down.
 
-> If another application already owns your combination, the app says so under **⌨ Hotkeys** instead of failing silently.
+> If another application already owns your combination, the app says so under **⌨ Hotkeys** — and keeps the keys working through fallback polling instead of failing silently.
 
 ---
 
@@ -357,10 +359,11 @@ Grab the latest `.exe` from the **[Releases](../../releases)** page. No installa
 ## 🛠️ Build from source
 
 ```bash
-# 1. Install Rust (1.97.1+, edition 2024): https://rustup.rs
+# 1. Install Rust (1.100.0+, edition 2024): https://rustup.rs
+#    (rust-toolchain.toml pins the exact version automatically)
 # 2. Clone & build
-git clone https://github.com/blackixxce12/autoclicker-git
-cd auto-clicker
+git clone https://github.com/blackixxce12/AutoClicker
+cd AutoClicker
 
 # Universal build
 cargo build --release
@@ -419,6 +422,12 @@ Next to the exe if that folder is writable, otherwise `%APPDATA%\AutoClicker\`. 
 
 **Double click but nothing double-clicks?**
 The gap between the two presses is fixed at 30 ms so Windows recognises them as one double click. If the target still treats them as two singles, it is using its own timing rules.
+
+**F6 / F9 do nothing?**
+v1.0 relied on `RegisterHotKey` alone, which fails when another program already owns the combination. v1.1 adds a polling fallback, so the defaults keep working either way — update first. On laptops whose F-row sends media keys by default, hold `Fn`, flip the F-row mode in your BIOS / vendor utility, or simply rebind the hotkeys to any other key.
+
+**Hotkeys only work while the clicker window is focused?**
+If the exe lives inside an agent-sandbox workspace (e.g. a DeepSeek Harness `default-workspace` folder), the sandbox stamps it with a *Low mandatory integrity label*, and Windows restricts such processes: global hotkeys, background input and the tray icon stop working no matter how you launch it. Copy the exe to a normal folder (Desktop, Downloads) or download the release build — the copy gets a clean label and everything works. This is an environment restriction, not an app bug.
 
 ---
 

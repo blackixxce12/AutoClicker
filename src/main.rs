@@ -8,11 +8,14 @@
 //!
 //! Threads:
 //!   * UI       - eframe/egui
-//!   * hotkeys  - RegisterHotKey + tray window + Win32 message loop
+//!   * hotkeys  - RegisterHotKey + GetAsyncKeyState fallback + tray window
 //!   * clicker  - spin_sleep + timeBeginPeriod(1) + SendInput
 //!
 //! Deliberately hook-free: everything is driven by `RegisterHotKey` and
 //! `GetAsyncKeyState`, so the app never installs a global keyboard hook.
+//! When another app owns the combination and `RegisterHotKey` fails, a
+//! 10 ms `GetAsyncKeyState` poll takes over, deduplicated against `WM_HOTKEY`
+//! so one physical press always fires exactly one action.
 //!
 //! `panic = "abort"` in release, so the shared paths avoid unwrap/indexing entirely.
 
@@ -66,6 +69,11 @@ const TRAY_ID_SHOW: u32 = 101;
 const TRAY_ID_START: u32 = 102;
 const TRAY_ID_STOP: u32 = 103;
 const TRAY_ID_EXIT: u32 = 104;
+
+/// Cadence of the GetAsyncKeyState safety net inside the hotkey thread.
+const HOTKEY_POLL_MS: u32 = 10;
+/// How often to retry a hotkey registration another app is holding.
+const HOTKEY_RETRY_US: u64 = 5_000_000;
 
 /// Longest single sleep inside the click loop: bounds Stop latency.
 const SLEEP_CHUNK_US: u64 = 15_000;
@@ -166,15 +174,16 @@ mod paths {
     /// Portable (next to the exe) when possible, otherwise %APPDATA%.
     pub fn data_dir() -> &'static Path {
         DATA_DIR.get_or_init(|| {
-            if let Some(dir) = exe_dir() {
-                if is_writable(&dir) {
-                    return dir;
-                }
+            if let Some(dir) = exe_dir()
+                && is_writable(&dir)
+            {
+                return dir;
             }
-            if let Some(dir) = roaming_dir() {
-                if std::fs::create_dir_all(&dir).is_ok() && is_writable(&dir) {
-                    return dir;
-                }
+            if let Some(dir) = roaming_dir()
+                && std::fs::create_dir_all(&dir).is_ok()
+                && is_writable(&dir)
+            {
+                return dir;
             }
             PathBuf::from(".")
         })
@@ -316,6 +325,81 @@ static PENDING_HOTKEYS: Mutex<[Hotkey; 2]> =
 /// 0 = idle, otherwise the slot currently waiting for a key press.
 static CAPTURE_SLOT: AtomicU32 = AtomicU32::new(0);
 
+/// Edge/dedup state for one hotkey slot, shared by the `RegisterHotKey` path
+/// and the `GetAsyncKeyState` fallback so a single physical press fires once.
+#[derive(Clone, Copy, Default)]
+struct SlotWatch {
+    prev_down: bool,
+    /// A `WM_HOTKEY` was already handled for the press currently held.
+    msg_seen: bool,
+    /// The fallback poller already handled the press currently held.
+    poll_fired: bool,
+}
+
+impl SlotWatch {
+    /// Feed one poll tick; returns true when the fallback should fire.
+    fn poll(&mut self, down: bool) -> bool {
+        let fire = down && !self.prev_down && !self.msg_seen;
+        if fire {
+            self.poll_fired = true;
+        }
+        if !down {
+            self.msg_seen = false;
+            self.poll_fired = false;
+        }
+        self.prev_down = down;
+        fire
+    }
+
+    /// Feed one `WM_HOTKEY`; returns true when it should be acted on.
+    fn message(&mut self) -> bool {
+        if self.poll_fired {
+            false
+        } else {
+            self.msg_seen = true;
+            true
+        }
+    }
+
+    /// Re-sync after (un)registration so an already-held key is not an edge.
+    fn resync(&mut self, down: bool) {
+        *self = Self { prev_down: down, ..Self::default() };
+    }
+}
+
+/// The action behind a hotkey id, shared by both delivery paths.
+fn dispatch_hotkey(state: &Arc<AppState>, id: i32) {
+    match id {
+        // In hold mode the engine watches the key itself, so the hotkey
+        // must not toggle anything.
+        HK_ID_TOGGLE => {
+            if !state.hold_mode.load(Ordering::Relaxed) {
+                toggle_clicking(state);
+            }
+        }
+        HK_ID_STOP => stop_clicking(state),
+        _ => {}
+    }
+}
+
+/// Mirrors `RegisterHotKey` semantics with `GetAsyncKeyState`: the configured
+/// modifiers must be held, extra ones are ignored. Keeps working even when
+/// another app owns the combination and `RegisterHotKey` failed.
+#[cfg(windows)]
+fn hotkey_down(hk: Hotkey) -> bool {
+    use win32::*;
+    if hk.vk == 0 {
+        return false;
+    }
+    unsafe {
+        let held = |vk: i32| (GetAsyncKeyState(vk) as u16 & 0x8000) != 0;
+        held(hk.vk as i32)
+            && (!hk.ctrl || held(0x11))
+            && (!hk.alt || held(0x12))
+            && (!hk.shift || held(0x10))
+    }
+}
+
 fn publish_hotkeys(cfg: &AppConfig) {
     *PENDING_HOTKEYS.lock() = [cfg.hotkey_toggle, cfg.hotkey_stop];
 }
@@ -386,7 +470,7 @@ fn scan_pressed_key() -> Option<Hotkey> {
 // Configuration
 // ============================================================================
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(default)]
 pub struct AppConfig {
     // interval
@@ -530,6 +614,13 @@ impl AppConfig {
         if self.key_vk > 0xFE {
             self.key_vk = 0x20;
         }
+        // A corrupt config must not leave the hotkeys unbindable.
+        if self.hotkey_toggle.vk > 0xFE {
+            self.hotkey_toggle = Hotkey::plain(0x75);
+        }
+        if self.hotkey_stop.vk > 0xFE {
+            self.hotkey_stop = Hotkey::plain(0x78);
+        }
     }
 
     /// Interval between clicks, never below 1 ms.
@@ -567,10 +658,10 @@ fn list_profiles() -> Vec<String> {
     if let Ok(entries) = std::fs::read_dir(paths::profiles_dir()) {
         for e in entries.flatten() {
             let p = e.path();
-            if p.extension().and_then(|x| x.to_str()) == Some("json") {
-                if let Some(stem) = p.file_stem().and_then(|x| x.to_str()) {
-                    out.push(stem.to_string());
-                }
+            if p.extension().and_then(|x| x.to_str()) == Some("json")
+                && let Some(stem) = p.file_stem().and_then(|x| x.to_str())
+            {
+                out.push(stem.to_string());
             }
         }
     }
@@ -643,14 +734,14 @@ mod platform {
 
         unsafe {
             let title = wide(APP_TITLE);
-            if let Ok(hwnd) = FindWindowW(None, PCWSTR(title.as_ptr())) {
-                if !hwnd.0.is_null() {
-                    let mut pid = 0u32;
-                    let _ = GetWindowThreadProcessId(hwnd, Some(&mut pid));
-                    if pid == GetCurrentProcessId() {
-                        HWND_CACHE.store(hwnd.0 as isize, Ordering::Relaxed);
-                        return hwnd;
-                    }
+            if let Ok(hwnd) = FindWindowW(None, PCWSTR(title.as_ptr()))
+                && !hwnd.0.is_null()
+            {
+                let mut pid = 0u32;
+                let _ = GetWindowThreadProcessId(hwnd, Some(&mut pid));
+                if pid == GetCurrentProcessId() {
+                    HWND_CACHE.store(hwnd.0 as isize, Ordering::Relaxed);
+                    return hwnd;
                 }
             }
         }
@@ -888,8 +979,13 @@ mod platform {
     pub fn focus_existing_instance() {
         unsafe {
             let title = wide(APP_TITLE);
-            if let Ok(hwnd) = FindWindowW(None, PCWSTR(title.as_ptr())) {
-                if !hwnd.0.is_null() {
+            // Only touch our own window: another app could share the title.
+            if let Ok(hwnd) = FindWindowW(None, PCWSTR(title.as_ptr()))
+                && !hwnd.0.is_null()
+            {
+                let mut pid = 0u32;
+                let _ = GetWindowThreadProcessId(hwnd, Some(&mut pid));
+                if pid == GetCurrentProcessId() {
                     let _ = ShowWindow(hwnd, SW_RESTORE);
                     let _ = SetForegroundWindow(hwnd);
                 }
@@ -904,7 +1000,7 @@ mod platform {
             let Ok(kernel32) = GetModuleHandleW(w!("kernel32.dll")) else {
                 return;
             };
-            let Some(sym) = GetProcAddress(kernel32, PCSTR(b"AttachConsole\0".as_ptr())) else {
+            let Some(sym) = GetProcAddress(kernel32, PCSTR(c"AttachConsole".as_ptr().cast())) else {
                 return;
             };
             let attach: unsafe extern "system" fn(u32) -> i32 = std::mem::transmute(sym);
@@ -1001,6 +1097,8 @@ pub struct AppState {
     pub jitter_px: AtomicI32,
     pub return_cursor: AtomicBool,
     pub points: Mutex<Vec<(i32, i32)>>,
+    /// Bumped whenever `points` changes, so the click loop can cache the list.
+    pub points_gen: AtomicU64,
 
     // stop conditions
     pub limit_us: AtomicU64,
@@ -1046,6 +1144,7 @@ impl AppState {
             jitter_px: AtomicI32::new(0),
             return_cursor: AtomicBool::new(false),
             points: Mutex::new(Vec::new()),
+            points_gen: AtomicU64::new(0),
 
             limit_us: AtomicU64::new(0),
             pixel_enabled: AtomicBool::new(false),
@@ -1089,7 +1188,13 @@ fn apply_config_to_state(cfg: &AppConfig, state: &AppState) {
     state.pos_y.store(cfg.pos_y, Ordering::Relaxed);
     state.jitter_px.store(cfg.jitter_px, Ordering::Relaxed);
     state.return_cursor.store(cfg.return_cursor, Ordering::Relaxed);
-    *state.points.lock() = cfg.points.clone();
+    {
+        let mut points = state.points.lock();
+        if *points != cfg.points {
+            *points = cfg.points.clone();
+            state.points_gen.fetch_add(1, Ordering::Relaxed);
+        }
+    }
 
     state.limit_us.store(if cfg.limit_enabled { cfg.limit_us() } else { 0 }, Ordering::Relaxed);
     state.pixel_enabled.store(cfg.pixel_enabled, Ordering::Relaxed);
@@ -1198,6 +1303,10 @@ fn clicker_loop(state: Arc<AppState>, generation: u64) {
     let mut count: u64 = 0;
     let mut point_idx: usize = 0;
     let mut last_pixel_check: u64 = 0;
+    // Local copy of the point list: re-read only when the UI changes it,
+    // instead of locking and cloning the Vec on every single click.
+    let mut points_cache: Vec<(i32, i32)> = Vec::new();
+    let mut points_gen = u64::MAX;
     let entry_cursor = platform::cursor_pos();
 
     loop {
@@ -1243,9 +1352,13 @@ fn clicker_loop(state: Arc<AppState>, generation: u64) {
                 platform::move_cursor(x, y);
             }
             2 => {
-                let points = state.points.lock().clone();
-                if !points.is_empty() {
-                    let (px, py) = points[point_idx % points.len()];
+                let cur_gen = state.points_gen.load(Ordering::Relaxed);
+                if cur_gen != points_gen {
+                    points_cache = state.points.lock().clone();
+                    points_gen = cur_gen;
+                }
+                if !points_cache.is_empty() {
+                    let (px, py) = points_cache[point_idx % points_cache.len()];
                     point_idx = point_idx.wrapping_add(1);
                     let jitter = state.jitter_px.load(Ordering::Relaxed) as i64;
                     platform::move_cursor(
@@ -1349,10 +1462,12 @@ mod tray {
     fn icon_handle(hinst: HINSTANCE) -> HICON {
         unsafe {
             // Resource id 1 is what winresource assigns to the embedded icon.
-            if let Ok(icon) = LoadIconW(Some(hinst), PCWSTR(1 as *const u16)) {
-                if !icon.is_invalid() {
-                    return icon;
-                }
+            // MAKEINTRESOURCE(1): an integer id cast to a pointer, not a real address.
+            #[allow(clippy::manual_dangling_ptr)]
+            if let Ok(icon) = LoadIconW(Some(hinst), PCWSTR(1 as *const u16))
+                && !icon.is_invalid()
+            {
+                return icon;
             }
             LoadIconW(None, IDI_APPLICATION).unwrap_or_default()
         }
@@ -1370,6 +1485,9 @@ mod tray {
             };
             RegisterClassW(&wc);
 
+            // A real window that is never shown, not a message-only window:
+            // message-only windows cannot become foreground, and TrackPopupMenu
+            // needs that to dismiss the menu when the user clicks elsewhere.
             let hwnd = match CreateWindowExW(
                 WINDOW_EX_STYLE(0),
                 class,
@@ -1379,7 +1497,7 @@ mod tray {
                 0,
                 0,
                 0,
-                Some(HWND_MESSAGE),
+                None,
                 None,
                 Some(hinst),
                 None,
@@ -1550,7 +1668,20 @@ unsafe fn register_hotkeys() {
 fn hotkey_thread(state: Arc<AppState>, with_tray: bool) {
     use win32::*;
     let _ = GLOBAL_STATE.set(state.clone());
+
+    unsafe {
+        // Force the message queue into existence before the thread id is
+        // published: PostThreadMessageW to a queue-less thread silently fails,
+        // which used to leave the hotkeys registered during a key capture.
+        let mut msg = MSG::default();
+        let _ = PeekMessageW(&mut msg, None, 0, 0, PM_NOREMOVE);
+    }
     HOOK_THREAD_ID.store(unsafe { GetCurrentThreadId() }, Ordering::Relaxed);
+
+    let ids = [HK_ID_TOGGLE, HK_ID_STOP];
+    let mut watch = [SlotWatch::default(); 2];
+    let mut resync = true;
+    let mut last_retry = now_us();
 
     unsafe {
         register_hotkeys();
@@ -1559,39 +1690,86 @@ fn hotkey_thread(state: Arc<AppState>, with_tray: bool) {
         }
 
         let mut msg = MSG::default();
-        while GetMessageW(&mut msg, None, 0, 0).as_bool() {
-            match msg.message {
-                WM_HOTKEY_ID => match msg.wParam.0 as i32 {
-                    // In hold mode the engine watches the key itself, so the hotkey
-                    // must not toggle anything.
-                    HK_ID_TOGGLE => {
-                        if !state.hold_mode.load(Ordering::Relaxed) {
-                            toggle_clicking(&state);
-                        }
-                    }
-                    HK_ID_STOP => stop_clicking(&state),
-                    _ => {}
-                },
-                WM_APP_REHOTKEY => register_hotkeys(),
-                WM_APP_HK_OFF => {
-                    for id in [HK_ID_TOGGLE, HK_ID_STOP] {
+        loop {
+            // Wake instantly on any message, but at least every HOTKEY_POLL_MS
+            // so the fallback poll below keeps running. MWMO_INPUTAVAILABLE
+            // also reports messages that were already in the queue.
+            let _ = MsgWaitForMultipleObjectsEx(
+                None,
+                HOTKEY_POLL_MS,
+                QS_ALLINPUT,
+                MWMO_INPUTAVAILABLE,
+            );
+
+            while PeekMessageW(&mut msg, None, 0, 0, PM_REMOVE).as_bool() {
+                if msg.message == WM_QUIT {
+                    tray::shutdown();
+                    for id in ids {
                         let _ = UnregisterHotKey(None, id);
                     }
-                    HK_FAILED.store(0, Ordering::Relaxed);
+                    info!("hotkey thread exited");
+                    return;
                 }
-                _ => {
-                    let _ = TranslateMessage(&msg);
-                    let _ = DispatchMessageW(&msg);
+                match msg.message {
+                    WM_HOTKEY_ID => {
+                        let id = msg.wParam.0 as i32;
+                        let slot = match id {
+                            HK_ID_TOGGLE => Some(0usize),
+                            HK_ID_STOP => Some(1usize),
+                            _ => None,
+                        };
+                        if let Some(w) = slot.map(|i| &mut watch[i])
+                            && w.message()
+                        {
+                            dispatch_hotkey(&state, id);
+                        }
+                    }
+                    WM_APP_REHOTKEY => {
+                        register_hotkeys();
+                        resync = true;
+                    }
+                    WM_APP_HK_OFF => {
+                        for id in ids {
+                            let _ = UnregisterHotKey(None, id);
+                        }
+                        HK_FAILED.store(0, Ordering::Relaxed);
+                        resync = true;
+                    }
+                    _ => {
+                        let _ = TranslateMessage(&msg);
+                        let _ = DispatchMessageW(&msg);
+                    }
+                }
+            }
+
+            // ---- GetAsyncKeyState safety net ---------------------------------
+            // RegisterHotKey can fail (another app owns the key) or, on some
+            // setups, never deliver. Polling the hardware state covers both;
+            // SlotWatch deduplicates against WM_HOTKEY in each direction.
+            let hk = *PENDING_HOTKEYS.lock();
+            let capturing = CAPTURE_SLOT.load(Ordering::Relaxed) != 0;
+            for (idx, w) in watch.iter_mut().enumerate() {
+                let down = !capturing && hotkey_down(hk[idx]);
+                if resync {
+                    w.resync(down);
+                } else if w.poll(down) {
+                    info!("hotkey {} handled by fallback polling", hk[idx].label());
+                    dispatch_hotkey(&state, ids[idx]);
+                }
+            }
+            resync = false;
+
+            // ---- retry registrations another app was holding -----------------
+            if HK_FAILED.load(Ordering::Relaxed) != 0 {
+                let now = now_us();
+                if now.saturating_sub(last_retry) >= HOTKEY_RETRY_US {
+                    last_retry = now;
+                    register_hotkeys();
+                    resync = true;
                 }
             }
         }
-
-        tray::shutdown();
-        for id in [HK_ID_TOGGLE, HK_ID_STOP] {
-            let _ = UnregisterHotKey(None, id);
-        }
     }
-    info!("hotkey thread exited");
 }
 
 // ============================================================================
@@ -1625,7 +1803,7 @@ macro_rules! define_strings {
                 )*
                 self
             }
-            fn to_map(&self) -> BTreeMap<&'static str, &'static str> {
+            fn to_map(self) -> BTreeMap<&'static str, &'static str> {
                 let mut m = BTreeMap::new();
                 $( m.insert(stringify!($field), self.$field); )*
                 m
@@ -1680,7 +1858,7 @@ const EN: Strings = Strings {
     pixel_match: "when it matches", pixel_differ: "when it differs",
     hk_toggle: "Start / stop:", hk_stop: "Emergency stop:", hk_bind: "Bind",
     hk_press: "press a key… (Esc cancels)", hk_clear: "Clear",
-    hk_failed: "⚠ Some hotkeys are taken by another app",
+    hk_failed: "⚠ Some hotkeys are taken by another app — fallback polling is active",
     hold_mode: "Click only while the key is held",
     tip_hold_mode: "Turns the start key into a trigger: clicking happens while you hold it.",
     theme: "Theme:", language: "Language:", lang_auto: "Auto (system)",
@@ -1725,7 +1903,8 @@ const RU: Strings = Strings {
     pixel_tol: "Допуск", pixel_match: "когда совпадает", pixel_differ: "когда отличается",
     hk_toggle: "Старт / стоп:", hk_stop: "Аварийный стоп:",
     hk_bind: "Задать", hk_press: "нажмите клавишу… (Esc — отмена)",
-    hk_clear: "Сбросить", hk_failed: "⚠ Часть клавиш занята другой программой",
+    hk_clear: "Сбросить",
+    hk_failed: "⚠ Часть клавиш занята другой программой — работает резервный опрос",
     hold_mode: "Кликать только пока клавиша зажата",
     tip_hold_mode: "Клавиша старта становится триггером: клики идут, пока вы её держите.",
     theme: "Тема:", language: "Язык:", lang_auto: "Авто (система)",
@@ -1770,7 +1949,8 @@ const UK: Strings = Strings {
     pixel_tol: "Допуск", pixel_match: "коли збігається", pixel_differ: "коли відрізняється",
     hk_toggle: "Старт / стоп:", hk_stop: "Аварійний стоп:",
     hk_bind: "Задати", hk_press: "натисніть клавішу… (Esc — скасувати)",
-    hk_clear: "Скинути", hk_failed: "⚠ Частину клавіш зайнято іншою програмою",
+    hk_clear: "Скинути",
+    hk_failed: "⚠ Частину клавіш зайнято іншою програмою — працює резервне опитування",
     hold_mode: "Клікати лише поки клавішу затиснуто",
     tip_hold_mode: "Клавіша старту стає тригером: кліки йдуть, поки ви її тримаєте.",
     theme: "Тема:", language: "Мова:", lang_auto: "Авто (система)",
@@ -1815,7 +1995,7 @@ const PT: Strings = Strings {
     pixel_tol: "Tolerância", pixel_match: "quando coincidir", pixel_differ: "quando diferir",
     hk_toggle: "Iniciar / parar:", hk_stop: "Parada de emergência:",
     hk_bind: "Definir", hk_press: "pressione uma tecla… (Esc cancela)",
-    hk_clear: "Limpar", hk_failed: "⚠ Alguns atalhos estão ocupados",
+    hk_clear: "Limpar", hk_failed: "⚠ Alguns atalhos estão ocupados — sondagem de reserva ativa",
     hold_mode: "Clicar só enquanto a tecla estiver pressionada",
     tip_hold_mode: "A tecla de início vira gatilho: clica enquanto você a segura.",
     theme: "Tema:", language: "Idioma:", lang_auto: "Auto (sistema)",
@@ -1860,7 +2040,7 @@ const ES: Strings = Strings {
     pixel_tol: "Tolerancia", pixel_match: "cuando coincida", pixel_differ: "cuando difiera",
     hk_toggle: "Iniciar / detener:", hk_stop: "Parada de emergencia:",
     hk_bind: "Asignar", hk_press: "pulsa una tecla… (Esc cancela)",
-    hk_clear: "Borrar", hk_failed: "⚠ Algunos atajos están ocupados",
+    hk_clear: "Borrar", hk_failed: "⚠ Algunos atajos están ocupados — sondeo de respaldo activo",
     hold_mode: "Clicar sólo mientras la tecla esté pulsada",
     tip_hold_mode: "La tecla de inicio actúa como gatillo: clica mientras la mantienes.",
     theme: "Tema:", language: "Idioma:", lang_auto: "Auto (sistema)",
@@ -1903,7 +2083,7 @@ const ZH: Strings = Strings {
     pixel_match: "当匹配时", pixel_differ: "当不匹配时",
     hk_toggle: "开始 / 停止:", hk_stop: "紧急停止:",
     hk_bind: "设置", hk_press: "请按一个键…（Esc 取消）",
-    hk_clear: "清除", hk_failed: "⚠ 部分快捷键被其他程序占用",
+    hk_clear: "清除", hk_failed: "⚠ 部分快捷键被其他程序占用 — 已启用备用轮询",
     hold_mode: "仅在按住按键时点击",
     tip_hold_mode: "开始键变成扳机：按住时才会点击。",
     theme: "主题:", language: "语言:", lang_auto: "自动 (系统)",
@@ -2291,6 +2471,9 @@ fn apply_theme(ctx: &egui::Context, theme: Theme, transparent_ui: bool) -> egui:
 struct ClickerApp {
     state: Arc<AppState>,
     config: AppConfig,
+    /// Snapshot of what the engine already knows; lets idle frames skip the
+    /// atomic stores, the points mutex and the Vec clone entirely.
+    last_applied: AppConfig,
     system_lang: Lang,
     status_msg: String,
     theme_dirty: bool,
@@ -2311,12 +2494,12 @@ struct ClickerApp {
 
 impl ClickerApp {
     fn new(cc: &eframe::CreationContext<'_>, state: Arc<AppState>, config: AppConfig) -> Self {
-        setup_fonts(&cc.egui_ctx);
         let panel_fill =
             apply_theme(&cc.egui_ctx, theme_at(config.default_theme), config.transparent_ui);
         Self {
             panel_fill,
             state,
+            last_applied: config.clone(),
             config,
             system_lang: detect_system_lang(),
             status_msg: String::new(),
@@ -2334,28 +2517,6 @@ impl ClickerApp {
     fn strs(&self) -> &'static Strings {
         get_strings(self.config.default_lang, self.system_lang)
     }
-}
-
-fn setup_fonts(ctx: &egui::Context) {
-    let mut fonts = egui::FontDefinitions::default();
-    let candidates = [
-        "C:\\Windows\\Fonts\\msyh.ttc",
-        "C:\\Windows\\Fonts\\simhei.ttf",
-        "C:\\Windows\\Fonts\\meiryo.ttc",
-    ];
-    for path in candidates {
-        if let Ok(data) = std::fs::read(path) {
-            fonts.font_data.insert("cjk".into(), egui::FontData::from_owned(data).into());
-            if let Some(f) = fonts.families.get_mut(&egui::FontFamily::Proportional) {
-                f.push("cjk".into());
-            }
-            if let Some(f) = fonts.families.get_mut(&egui::FontFamily::Monospace) {
-                f.push("cjk".into());
-            }
-            break;
-        }
-    }
-    ctx.set_fonts(fonts);
 }
 
 /// One row of the hotkey editor.
@@ -3010,10 +3171,20 @@ impl eframe::App for ClickerApp {
             });
         });
 
-        // Idempotent every frame: the engine can never drift from the UI.
-        self.config.sanitize();
-        apply_config_to_state(&self.config, &self.state);
-        ui.ctx().request_repaint_after(Duration::from_millis(100));
+        // Push settings into the engine only when they actually changed, so an
+        // idle frame costs no atomics, no mutex and no Vec clone.
+        if self.config != self.last_applied {
+            self.config.sanitize();
+            apply_config_to_state(&self.config, &self.state);
+            self.last_applied = self.config.clone();
+        }
+        // 10 Hz while something is moving, 2 Hz when idle; egui still repaints
+        // immediately on any input event, so the UI never feels slower.
+        let busy = running
+            || CAPTURE_SLOT.load(Ordering::Relaxed) != 0
+            || self.pick_point_deadline.is_some()
+            || self.pick_pixel_deadline.is_some();
+        ui.ctx().request_repaint_after(Duration::from_millis(if busy { 100 } else { 500 }));
     }
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
@@ -3278,6 +3449,49 @@ mod tests {
     fn profile_names_are_sanitized() {
         let p = profile_path("farm/../evil");
         assert!(p.file_name().unwrap().to_string_lossy().starts_with("farm_"));
+    }
+
+    #[test]
+    fn sanitize_fixes_broken_hotkeys() {
+        let mut cfg = AppConfig {
+            hotkey_toggle: Hotkey::plain(0x1234),
+            hotkey_stop: Hotkey::plain(0xFFFF),
+            ..Default::default()
+        };
+        cfg.sanitize();
+        assert_eq!(cfg.hotkey_toggle.vk, 0x75); // back to F6
+        assert_eq!(cfg.hotkey_stop.vk, 0x78); // back to F9
+    }
+
+    #[test]
+    fn hotkey_message_suppresses_duplicate_poll() {
+        let mut w = SlotWatch::default();
+        assert!(w.message()); // WM_HOTKEY arrives first (normal path)
+        assert!(!w.poll(true)); // poller sees the same press: must not fire
+        assert!(!w.poll(true)); // still held: no repeat
+        assert!(!w.poll(false)); // released
+        assert!(w.poll(true)); // next press without a message: fallback fires
+        assert!(!w.message()); // late WM_HOTKEY for that press: suppressed
+        assert!(!w.poll(false));
+        assert!(w.message()); // fresh press again
+    }
+
+    #[test]
+    fn hotkey_poll_suppresses_duplicate_message() {
+        let mut w = SlotWatch::default();
+        assert!(w.poll(true)); // fallback fires (registration failed)
+        assert!(!w.message()); // late message suppressed
+        assert!(!w.poll(false));
+        assert!(w.message()); // after release the message path works again
+    }
+
+    #[test]
+    fn hotkey_resync_ignores_already_held_key() {
+        let mut w = SlotWatch::default();
+        w.resync(true); // key was held while (re)registering
+        assert!(!w.poll(true)); // no edge until it is released
+        assert!(!w.poll(false));
+        assert!(w.poll(true));
     }
 }
 
